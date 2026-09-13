@@ -1,210 +1,221 @@
 /**
  * geocoding.js
- * Enhanced fuzzy search supporting multi-word queries (space-separated)
- * with robust error handling, type safety, and rate-limit friendly requests.
+ * High-performance, CORS-friendly Geocoding using Photon API (OpenStreetMap data)
+ * with multi-word search, fuzzy ranking, and Nominatim fallback.
  */
 
 // Japanese Kana & Width normalization helper
 function normalizeJapanese(str) {
   if (!str) return '';
   return String(str)
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)) // Fullwidth to halfwidth
-    .replace(/[\u30a1-\u30f6]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60))   // Katakana to Hiragana
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+    .replace(/[\u30a1-\u30f6]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60))
     .toLowerCase();
 }
 
 /**
- * Perform a flexible multi-word search with safety guards
- * Supports spaces (e.g. "別府 杉乃井", "草津 温泉", "箱根 旅館")
+ * Perform a robust multi-word search
+ * Fully CORS compatible for Android PWA, mobile browsers & GitHub Pages
  */
 export async function searchPlaces(rawQuery) {
   try {
     if (!rawQuery || rawQuery.trim().length < 2) return [];
 
-    // Normalize fullwidth spaces to halfwidth and clean up
     const cleanQuery = rawQuery.replace(/　/g, ' ').trim();
     const tokens = cleanQuery.split(/\s+/).filter(t => t.length > 0);
 
     if (tokens.length === 0) return [];
 
-    // Step 1: Sequential smart fetching to respect Nominatim rate-limits
-    // Strategy: First try the exact query. If results are 0 and multiple tokens exist, try concatenated query or main keyword.
-    let allItems = [];
+    // Step 1: Query Photon API (CORS enabled: Access-Control-Allow-Origin: *)
+    let features = await fetchPhotonSmart(cleanQuery, tokens);
 
-    // Primary query
-    const primaryResults = await fetchNominatimQuery(cleanQuery);
-    allItems.push(...primaryResults);
-
-    // If multiple words were given, also fetch the concatenated version (e.g. "別府 杉乃井" -> "別府杉乃井" or longest token)
-    if (tokens.length > 1) {
-      const concatenated = tokens.join('');
-      // Only query if it differs from cleanQuery
-      if (concatenated !== cleanQuery) {
-        const concatResults = await fetchNominatimQuery(concatenated);
-        allItems.push(...concatResults);
-      }
-
-      // If still very few results (less than 2), try the most specific token (longest non-generic word)
-      if (allItems.length < 2) {
-        const sortedTokens = [...tokens].sort((a, b) => b.length - a.length);
-        const specificToken = sortedTokens[0];
-        if (specificToken && specificToken !== cleanQuery && specificToken !== concatenated && specificToken.length >= 2) {
-          const tokenResults = await fetchNominatimQuery(specificToken);
-          allItems.push(...tokenResults);
-        }
-      }
+    // If Photon returned few or no results, fallback to Nominatim (no forbidden headers)
+    if (!features || features.length === 0) {
+      features = await fetchNominatimFallback(cleanQuery, tokens);
     }
 
-    if (allItems.length === 0) return [];
+    if (!features || features.length === 0) return [];
 
-    // Step 2: Safe deduplication using place_id or safely parsed lat/lng
-    const uniqueMap = new Map();
-    allItems.forEach(item => {
-      if (!item) return;
-      const latNum = parseFloat(item.lat);
-      const lonNum = parseFloat(item.lon);
-      const latStr = !isNaN(latNum) ? latNum.toFixed(4) : '';
-      const lonStr = !isNaN(lonNum) ? lonNum.toFixed(4) : '';
-      const key = item.place_id || item.osm_id || `${latStr}-${lonStr}` || Math.random().toString();
-
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, item);
-      }
-    });
-
-    const uniqueItems = Array.from(uniqueMap.values());
-
-    // Step 3: Score and rank items based on how well they match the tokens
+    // Step 2: Score and rank results
     const normCleanQuery = normalizeJapanese(cleanQuery);
     const normTokens = tokens.map(t => normalizeJapanese(t));
 
-    const scoredItems = uniqueItems.map(item => {
-      const rawName = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
-      const rawDisplayName = item.display_name || '';
+    const scoredItems = features.map(item => {
+      const name = item.name || '';
+      const address = item.address || item.displayName || '';
 
-      const normName = normalizeJapanese(rawName);
-      const normDisplayName = normalizeJapanese(rawDisplayName);
+      const normName = normalizeJapanese(name);
+      const normAddr = normalizeJapanese(address);
 
       let score = 0;
-      let matchedTokenCount = 0;
+      let matchedTokens = 0;
 
       // Exact phrase match
-      if (normName.includes(normCleanQuery)) {
-        score += 120;
-      } else if (normDisplayName.includes(normCleanQuery)) {
-        score += 80;
-      }
+      if (normName.includes(normCleanQuery)) score += 120;
+      else if (normAddr.includes(normCleanQuery)) score += 70;
 
-      // Token-level matches
+      // Token matches
       normTokens.forEach(token => {
-        let tokenMatched = false;
+        let matched = false;
         if (normName.includes(token)) {
-          score += 50;
-          tokenMatched = true;
+          score += 45;
+          matched = true;
         }
-        if (normDisplayName.includes(token)) {
-          score += 30;
-          tokenMatched = true;
+        if (normAddr.includes(token)) {
+          score += 25;
+          matched = true;
         }
-        if (tokenMatched) {
-          matchedTokenCount++;
-        }
+        if (matched) matchedTokens++;
       });
 
-      // Bonus if all tokens appear in either name or address
-      if (tokens.length > 1 && matchedTokenCount === tokens.length) {
-        score += 100;
+      // Bonus if all tokens match
+      if (tokens.length > 1 && matchedTokens === tokens.length) {
+        score += 90;
       }
-
-      // Add small importance weight
-      if (item.importance && typeof item.importance === 'number') {
-        score += item.importance * 15;
-      }
-
-      const lat = parseFloat(item.lat);
-      const lng = parseFloat(item.lon);
 
       return {
-        score,
-        name: rawName || '名称未設定',
-        displayName: formatCleanAddress(rawDisplayName, rawName),
-        lat: !isNaN(lat) ? lat : 35.6812,
-        lng: !isNaN(lng) ? lng : 139.7671
+        name: name || 'スポット名未設定',
+        displayName: address,
+        address: address,
+        lat: item.lat,
+        lng: item.lng,
+        score
       };
     });
 
-    // Step 4: Sort and filter
+    // Step 3: Sort by score and take top 8
     const sorted = scoredItems
-      .filter(res => res.score > 0)
+      .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    // If scoring filtered out everything (unlikely), fallback to original items
-    const finalItems = sorted.length > 0 ? sorted : scoredItems;
+    const finalResults = sorted.length > 0 ? sorted : scoredItems;
 
-    return finalItems.slice(0, 8).map(res => ({
-      name: res.name,
-      displayName: res.displayName,
-      lat: res.lat,
-      lng: res.lng,
-      address: res.displayName
-    }));
+    return finalResults.slice(0, 8);
   } catch (err) {
-    console.error('searchPlaces encountered an error:', err);
+    console.error('searchPlaces fatal error:', err);
     return [];
   }
 }
 
-async function fetchNominatimQuery(query) {
-  if (!query || query.trim().length === 0) return [];
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=jp&limit=6&addressdetails=1`;
+/**
+ * Fetch from Photon (Komoot) with multi-token smart handling
+ */
+async function fetchPhotonSmart(cleanQuery, tokens) {
   try {
-    const res = await fetch(url, {
-      headers: {
-        'Accept-Language': 'ja,en;q=0.8',
-        'User-Agent': 'BlankMapStudio/1.0'
+    const candidateQueries = [cleanQuery];
+    if (tokens.length > 1) {
+      candidateQueries.push(tokens.join(''));
+      // Add longest specific token
+      const sortedTokens = [...tokens].sort((a, b) => b.length - a.length);
+      if (sortedTokens[0].length >= 2 && sortedTokens[0] !== cleanQuery) {
+        candidateQueries.push(sortedTokens[0]);
       }
-    });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch (err) {
-    console.warn(`Fetch failed for query "${query}":`, err);
-    return [];
-  }
-}
-
-// Clean and prettify Japanese address display
-function formatCleanAddress(displayName, facilityName) {
-  if (!displayName) return '';
-  const parts = displayName.split(',').map(p => p.trim());
-  const filteredParts = parts.filter(p => !/^\d{3}-\d{4}$/.test(p) && p !== facilityName);
-  return filteredParts.slice(0, 4).join(', ') || displayName;
-}
-
-export async function reverseGeocode(lat, lng) {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`;
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'Accept-Language': 'ja,en;q=0.8',
-        'User-Agent': 'BlankMapStudio/1.0'
-      }
-    });
-    if (!res.ok) return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
-    const data = await res.json();
-
-    const addr = data.address;
-    if (addr) {
-      const state = addr.province || addr.state || '';
-      const city = addr.city || addr.ward || addr.town || addr.village || addr.county || '';
-      const suburb = addr.suburb || addr.quarter || addr.neighbourhood || '';
-      const road = addr.road || '';
-      const full = [state, city, suburb, road].filter(Boolean).join('');
-      return full || data.display_name;
     }
-    return data.display_name || `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
-  } catch (error) {
-    console.error('Reverse geocode error:', error);
-    return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
+
+    const allFeatures = [];
+    const seenIds = new Set();
+
+    for (const q of candidateQueries) {
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=default&limit=6`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      if (data && Array.isArray(data.features)) {
+        data.features.forEach(f => {
+          const props = f.properties || {};
+          const geom = f.geometry || {};
+          const coords = geom.coordinates || [];
+
+          if (coords.length >= 2) {
+            const lng = parseFloat(coords[0]);
+            const lat = parseFloat(coords[1]);
+            const osmId = props.osm_id || `${lat.toFixed(4)}-${lng.toFixed(4)}`;
+
+            if (!seenIds.has(osmId)) {
+              seenIds.add(osmId);
+
+              // Build clean Japanese address
+              const parts = [
+                props.country === '日本' || props.countrycode === 'JP' ? '' : props.country,
+                props.state,
+                props.county,
+                props.city || props.district || props.locality,
+                props.street,
+                props.housenumber
+              ].filter(Boolean);
+
+              allFeatures.push({
+                name: props.name || props.street || parts.join(' ') || '名称未設定',
+                address: parts.join(' ') || props.name || '',
+                displayName: parts.join(' ') || props.name || '',
+                lat,
+                lng
+              });
+            }
+          }
+        });
+      }
+
+      // If we already found good matches, avoid extra network calls
+      if (allFeatures.length >= 4) break;
+    }
+
+    return allFeatures;
+  } catch (e) {
+    console.warn('Photon fetch error:', e);
+    return [];
   }
+}
+
+/**
+ * Fallback to Nominatim (without forbidden User-Agent header)
+ */
+async function fetchNominatimFallback(query, tokens) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=jp&limit=6&addressdetails=1`;
+    const res = await fetch(url); // Browser automatically sends standard headers
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.map(item => {
+      const lat = parseFloat(item.lat);
+      const lng = parseFloat(item.lon);
+      const name = item.name || (item.display_name ? item.display_name.split(',')[0] : '');
+      return {
+        name,
+        address: item.display_name,
+        displayName: item.display_name,
+        lat,
+        lng
+      };
+    });
+  } catch (e) {
+    console.warn('Nominatim fallback error:', e);
+    return [];
+  }
+}
+
+/**
+ * Reverse Geocode (Coordinates -> Address)
+ */
+export async function reverseGeocode(lat, lng) {
+  try {
+    // Try Photon reverse first
+    const photonUrl = `https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}`;
+    const res = await fetch(photonUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.features?.[0]?.properties) {
+        const p = data.features[0].properties;
+        const full = [p.state, p.city || p.locality, p.street, p.name].filter(Boolean).join(' ');
+        if (full) return full;
+      }
+    }
+  } catch (e) {}
+
+  // Fallback to coordinates
+  return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
 }

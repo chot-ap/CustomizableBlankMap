@@ -163,17 +163,20 @@
               <label><i class="fa-solid fa-circle-dot text-primary"></i> 出発地点（スタート）</label>
               <div class="input-with-action">
                 <input type="text" id="route-origin-input" placeholder="出発地（住所検索または地図から指定）" readonly>
-                <button id="btn-set-origin-current" class="btn-input-action" title="現在地を出発地に設定">
+                <button type="button" id="btn-search-origin-route" class="btn-input-action" title="場所を検索して出発地に設定">
+                  <i class="fa-solid fa-magnifying-glass"></i> 検索
+                </button>
+                <button type="button" id="btn-set-origin-current" class="btn-input-action" title="現在地を出発地に設定">
                   <i class="fa-solid fa-location-crosshairs"></i> 現在地
                 </button>
-                <button id="btn-pick-origin-map" class="btn-input-action" title="地図をクリックして出発地を指定">
+                <button type="button" id="btn-pick-origin-map" class="btn-input-action" title="地図をクリックして出発地を指定">
                   <i class="fa-solid fa-map-pin"></i> 地図指定
                 </button>
               </div>
             </div>
 
             <div class="route-swap-row">
-              <button id="btn-swap-route-points" class="icon-btn-sm" title="出発地と目的地を入れ替え">
+              <button type="button" id="btn-swap-route-points" class="icon-btn-sm" title="出発地と目的地を入れ替え">
                 <i class="fa-solid fa-arrows-up-down"></i>
               </button>
             </div>
@@ -184,7 +187,10 @@
                 <select id="route-dest-select">
                   <option value="">登録スポットまたは地点を選択...</option>
                 </select>
-                <button id="btn-pick-dest-map" class="btn-input-action" title="地図をクリックして目的地を指定">
+                <button type="button" id="btn-search-dest-route" class="btn-input-action" title="場所を検索して目的地に設定">
+                  <i class="fa-solid fa-magnifying-glass"></i> 検索
+                </button>
+                <button type="button" id="btn-pick-dest-map" class="btn-input-action" title="地図をクリックして目的地を指定">
                   <i class="fa-solid fa-map-pin"></i> 地図指定
                 </button>
               </div>

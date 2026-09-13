@@ -4,7 +4,8 @@
  * Handles caching and offline capability
  */
 
-const CACHE_NAME = 'blankmap-cache-v1';
+const CACHE_NAME = 'blankmap-cache-v2';
+
 
 const PRECACHE_ASSETS = [
   './',
@@ -75,8 +76,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle API requests (Nominatim / OSRM): Network only with graceful offline failure
-  if (url.hostname.includes('router.project-osrm.org') || url.hostname.includes('nominatim.openstreetmap.org')) {
+  // Handle API requests (Photon / Nominatim / OSRM): Network only with graceful offline failure
+  if (url.hostname.includes('router.project-osrm.org') || url.hostname.includes('nominatim.openstreetmap.org') || url.hostname.includes('photon.komoot.io')) {
     return; // Let browser fetch normally, client-side fallback handles offline
   }
 

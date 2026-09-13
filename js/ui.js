@@ -245,6 +245,15 @@ class UIManager {
       if (catColorLabel) catColorLabel.textContent = e.target.value;
     });
 
+    // Route origin & destination search buttons
+    document.getElementById('btn-search-origin-route')?.addEventListener('click', () => {
+      this.promptSearchForRoutePoint('origin');
+    });
+
+    document.getElementById('btn-search-dest-route')?.addEventListener('click', () => {
+      this.promptSearchForRoutePoint('dest');
+    });
+
     // Route origin buttons
     document.getElementById('btn-set-origin-current')?.addEventListener('click', () => {
       this.handleSetOriginCurrentLocation();
@@ -676,6 +685,41 @@ class UIManager {
       },
       { timeout: 8000 }
     );
+  }
+
+  async promptSearchForRoutePoint(pointType) {
+    const label = pointType === 'origin' ? '出発地点' : '目的地';
+    const query = prompt(`${label}の地名・施設名・住所を入力してください:`);
+    if (!query || !query.trim()) return;
+
+    this.showToast(`${label}「${query}」を検索中...`);
+    const results = await searchPlaces(query);
+    if (!results || results.length === 0) {
+      alert(`「${query}」に該当する場所が見つかりませんでした。別のキーワードをお試しください。`);
+      return;
+    }
+
+    const item = results[0];
+    if (pointType === 'origin') {
+      store.setOriginPoint({ lat: item.lat, lng: item.lng, name: item.name });
+      document.getElementById('route-origin-input').value = item.name;
+      this.showToast(`出発地に「${item.name}」を設定しました`);
+    } else {
+      this.selectedDestPoint = { lat: item.lat, lng: item.lng, name: item.name };
+      const select = document.getElementById('route-dest-select');
+      if (select) {
+        const opt = document.createElement('option');
+        opt.value = 'custom-' + Date.now();
+        opt.textContent = `📍 ${item.name}`;
+        opt.selected = true;
+        select.appendChild(opt);
+      }
+      this.showToast(`目的地に「${item.name}」を設定しました`);
+      if (store.getOriginPoint()) {
+        this.executeRouteCalculation();
+      }
+    }
+    mapManager.flyToLocation(item.lat, item.lng, 13);
   }
 
   handleSetOriginCurrentLocation() {
