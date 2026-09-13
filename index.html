@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>白地図手帳 - 目的別カスタムマップ＆ルートナビ</title>
+  <meta name="description" content="行った場所・行きたい場所を白地図上に目的別（温泉・宿・グルメ等）に記録・保存。出発地からの所要時間やルートを快適に検索できるスマート白地図アプリ。">
+
+  <!-- PWA & Mobile Meta Tags -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="白地図手帳">
+  <link rel="icon" type="image/png" href="./icons/favicon.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/leaflet-custom.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Navigation Bar -->
+    <header class="app-header">
+      <div class="header-left">
+        <button id="btn-toggle-sidebar" class="icon-btn" title="サイドパネルを開閉" aria-label="サイドパネルを開閉">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="logo">
+          <div class="logo-icon"><i class="fa-solid fa-map-location-dot"></i></div>
+          <div class="logo-text">
+            <h1>白地図手帳</h1>
+            <span class="badge-sub">BlankMap Studio</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Search Bar -->
+      <div class="header-center">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="global-search-input" placeholder="地名・施設名・住所を検索（スペース区切り対応）..." autocomplete="off">
+          <button id="global-search-clear" class="clear-search-btn" title="クリア" style="display: none;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+          <div id="search-results-dropdown" class="search-dropdown"></div>
+        </div>
+      </div>
+
+      <!-- Header Actions -->
+      <div class="header-right">
+        <!-- Map Style Selector -->
+        <div class="map-style-selector" title="地図スタイル切り替え">
+          <i class="fa-solid fa-layer-group"></i>
+          <select id="select-tile-layer" aria-label="地図レイヤースタイル">
+            <option value="gsi-blank">国土地理院 白地図</option>
+            <option value="carto-positron">CartoDB ライト白地図</option>
+            <option value="gsi-pale">国土地理院 淡色地図</option>
+            <option value="osm-standard">標準地図 (OSM)</option>
+          </select>
+        </div>
+
+        <!-- Action Buttons -->
+        <!-- PWA Install Button (Shown on Android / Supported browsers) -->
+        <button id="btn-install-pwa" class="btn btn-sm btn-install-app" style="display: none;" title="ホーム画面にアプリをインストール">
+          <i class="fa-solid fa-download"></i>
+          <span>アプリ保存</span>
+        </button>
+
+        <button id="btn-open-route" class="btn btn-outline" title="出発地からのルートと所要時間を検索">
+          <i class="fa-solid fa-route"></i>
+          <span>ルート探索</span>
+        </button>
+        <button id="btn-quick-add" class="btn btn-primary" title="新しいスポットを追加">
+          <i class="fa-solid fa-plus"></i>
+          <span>スポット追加</span>
+        </button>
+        <button id="btn-data-management" class="icon-btn" title="データ保存・エクスポート/インポート">
+          <i class="fa-solid fa-sliders"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+      <!-- Sidebar Drawer -->
+      <aside id="app-sidebar" class="sidebar">
+        <!-- Category Filter Pill Bar -->
+        <div class="category-pills-container">
+          <div class="section-title-sm">目的（カテゴリ）選択</div>
+          <div id="category-pills-list" class="category-pills-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Sidebar Tab Navigation -->
+        <div class="sidebar-tabs">
+          <button class="tab-btn active" data-tab="tab-spots">
+            <i class="fa-solid fa-location-dot"></i>
+            <span>スポット一覧 (<span id="spots-count">0</span>)</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-categories">
+            <i class="fa-solid fa-tags"></i>
+            <span>目的設定</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-routes">
+            <i class="fa-solid fa-diamond-turn-right"></i>
+            <span>経路・時間</span>
+          </button>
+        </div>
+
+        <!-- Tab 1: Spots List -->
+        <div id="tab-spots" class="tab-content active">
+          <!-- Status Filter (All / Visited / Wishlist) -->
+          <div class="filter-controls">
+            <div class="status-segment-control">
+              <button class="segment-btn active" data-status-filter="all">すべて</button>
+              <button class="segment-btn" data-status-filter="visited">
+                <i class="fa-solid fa-circle-check text-success"></i> 行った
+              </button>
+              <button class="segment-btn" data-status-filter="wishlist">
+                <i class="fa-solid fa-star text-warning"></i> 行きたい
+              </button>
+            </div>
+          </div>
+
+          <!-- Spots List Container -->
+          <div id="spots-list" class="spots-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Tab 2: Category Management -->
+        <div id="tab-categories" class="tab-content">
+          <div class="tab-header-action">
+            <p class="section-desc">旅や暮らしの目的に応じて地図を自由に分類できます。</p>
+            <button id="btn-create-category" class="btn btn-sm btn-outline">
+              <i class="fa-solid fa-plus"></i> 新規カテゴリ追加
+            </button>
+          </div>
+          <div id="categories-management-list" class="categories-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Tab 3: Route & Travel Time -->
+        <div id="tab-routes" class="tab-content">
+          <div class="route-panel">
+            <div class="route-field">
+              <label><i class="fa-solid fa-circle-dot text-primary"></i> 出発地点（スタート）</label>
+              <div class="input-with-action">
+                <input type="text" id="route-origin-input" placeholder="出発地（住所検索または地図から指定）" readonly>
+                <button id="btn-set-origin-current" class="btn-input-action" title="現在地を出発地に設定">
+                  <i class="fa-solid fa-location-crosshairs"></i> 現在地
+                </button>
+                <button id="btn-pick-origin-map" class="btn-input-action" title="地図をクリックして出発地を指定">
+                  <i class="fa-solid fa-map-pin"></i> 地図指定
+                </button>
+              </div>
+            </div>
+
+            <div class="route-swap-row">
+              <button id="btn-swap-route-points" class="icon-btn-sm" title="出発地と目的地を入れ替え">
+                <i class="fa-solid fa-arrows-up-down"></i>
+              </button>
+            </div>
+
+            <div class="route-field">
+              <label><i class="fa-solid fa-location-pin text-danger"></i> 目的地（ゴール）</label>
+              <div class="input-with-action">
+                <select id="route-dest-select">
+                  <option value="">登録スポットまたは地点を選択...</option>
+                </select>
+                <button id="btn-pick-dest-map" class="btn-input-action" title="地図をクリックして目的地を指定">
+                  <i class="fa-solid fa-map-pin"></i> 地図指定
+                </button>
+              </div>
+            </div>
+
+            <!-- Transport Mode Selection -->
+            <div class="transport-mode-selector">
+              <button class="transport-btn active" data-mode="driving" title="車・ドライブ">
+                <i class="fa-solid fa-car"></i>
+                <span>車</span>
+              </button>
+              <button class="transport-btn" data-mode="walking" title="徒歩・散策">
+                <i class="fa-solid fa-person-walking"></i>
+                <span>徒歩</span>
+              </button>
+              <button class="transport-btn" data-mode="cycling" title="自転車・サイクリング">
+                <i class="fa-solid fa-bicycle"></i>
+                <span>自転車</span>
+              </button>
+            </div>
+
+            <button id="btn-calculate-route" class="btn btn-primary btn-block">
+              <i class="fa-solid fa-route"></i> ルートと所要時間を計算
+            </button>
+
+            <!-- Route Result Card -->
+            <div id="route-result-card" class="route-result-card" style="display: none;">
+              <div class="result-header">
+                <div class="result-time-block">
+                  <span class="label">予想所要時間</span>
+                  <span id="route-duration" class="time-value">--</span>
+                </div>
+                <div class="result-dist-block">
+                  <span class="label">総移動距離</span>
+                  <span id="route-distance" class="dist-value">--</span>
+                </div>
+              </div>
+              <div class="result-summary">
+                <div id="route-summary-desc" class="summary-text"></div>
+              </div>
+              <button id="btn-clear-route" class="btn btn-sm btn-ghost btn-block">
+                <i class="fa-solid fa-trash-can"></i> ルート表示をクリア
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Map Container -->
+      <main id="map" class="map-view"></main>
+
+      <!-- Floating Map Controls (Right-Bottom) -->
+      <div class="floating-controls">
+        <button id="btn-locate-me" class="floating-btn" title="現在地に移動" aria-label="現在地に移動">
+          <i class="fa-solid fa-location-crosshairs"></i>
+        </button>
+        <button id="btn-reset-view" class="floating-btn" title="日本全体を表示" aria-label="日本全体を表示">
+          <i class="fa-solid fa-compass"></i>
+        </button>
+        <button id="btn-export-map-image" class="floating-btn" title="白地図を画像として保存" aria-label="白地図を画像として保存">
+          <i class="fa-solid fa-camera"></i>
+        </button>
+      </div>
+
+      <!-- Hint Toast / Bar for Map Click Mode -->
+      <div id="map-interaction-banner" class="map-banner" style="display: none;">
+        <span id="map-interaction-text"><i class="fa-solid fa-hand-pointer"></i> 地図上の任意の場所をクリックしてください</span>
+        <button id="btn-cancel-interaction" class="btn-banner-cancel">キャンセル</button>
+      </div>
+    </div>
+
+    <!-- Spot Edit / Create Modal -->
+    <dialog id="modal-spot" class="app-modal">
+      <form id="form-spot" method="dialog" class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-spot-title"><i class="fa-solid fa-location-dot"></i> スポットを登録</h2>
+          <button type="button" class="modal-close-btn" data-close-modal="modal-spot">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="spot-id">
+          <input type="hidden" id="spot-lat">
+          <input type="hidden" id="spot-lng">
+
+          <!-- Spot Search Section -->
+          <div class="spot-search-box-card" id="spot-modal-search-box">
+            <div class="spot-search-box-header">
+              <label for="modal-spot-search-input">
+                <i class="fa-solid fa-magnifying-glass text-primary"></i> 施設名・スポット名・住所から検索（スペース複数単語対応）
+              </label>
+              <button type="button" id="btn-pick-spot-on-map-direct" class="btn-text-link" title="地図をクリックして位置を指定">
+                <i class="fa-solid fa-map-pin"></i> 地図をクリックして指定
+              </button>
+            </div>
+            <div class="search-input-group">
+              <input type="text" id="modal-spot-search-input" class="form-input" placeholder="例：草津 温泉、箱根 宿、別府 杉乃井ホテル、京都 カフェ...">
+              <button type="button" id="btn-modal-spot-search" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-magnifying-glass"></i> 検索
+              </button>
+            </div>
+            <!-- Search Results Dropdown/List inside modal -->
+            <div id="modal-spot-search-results" class="modal-search-results-list" style="display: none;"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="spot-name" class="required">スポット・場所名</label>
+            <input type="text" id="spot-name" class="form-input" placeholder="例：草津温泉 湯畑、富士屋ホテル..." required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="spot-category" class="required">目的・カテゴリ</label>
+              <select id="spot-category" class="form-select" required>
+                <!-- Dynamically populated with categories -->
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="required">状態（ステータス）</label>
+              <div class="radio-toggle-group">
+                <label class="radio-option">
+                  <input type="radio" name="spot-status" value="visited" checked>
+                  <span class="radio-custom visited"><i class="fa-solid fa-check"></i> 行った</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="spot-status" value="wishlist">
+                  <span class="radio-custom wishlist"><i class="fa-solid fa-star"></i> 行きたい</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="spot-date" id="label-spot-date">訪問日 / 訪問予定日</label>
+              <input type="date" id="spot-date" class="form-input">
+            </div>
+            <div class="form-group flex-1">
+              <label for="spot-rating">評価（お気に入り度）</label>
+              <select id="spot-rating" class="form-select">
+                <option value="5">⭐⭐⭐⭐⭐ (最高！)</option>
+                <option value="4">⭐⭐⭐⭐ (とても良い)</option>
+                <option value="3" selected>⭐⭐⭐ (良い)</option>
+                <option value="2">⭐⭐ (普通)</option>
+                <option value="1">⭐ (いまいち)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="spot-address">住所・地域</label>
+            <input type="text" id="spot-address" class="form-input" placeholder="例：群馬県吾妻郡草津町">
+          </div>
+
+          <div class="form-group">
+            <label for="spot-memo">思い出・行きたい理由・メモ</label>
+            <textarea id="spot-memo" class="form-textarea" rows="3" placeholder="名物の温泉まんじゅうを食べる、露天風呂が最高だった、など"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="spot-image-url">写真URL（任意）</label>
+            <input type="url" id="spot-image-url" class="form-input" placeholder="https://example.com/photo.jpg">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-delete-spot" class="btn btn-danger" style="display: none; margin-right: auto;">
+            <i class="fa-solid fa-trash"></i> 削除
+          </button>
+          <button type="button" class="btn btn-ghost" data-close-modal="modal-spot">キャンセル</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-check"></i> 保存する
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Category Edit / Create Modal -->
+    <dialog id="modal-category" class="app-modal">
+      <form id="form-category" method="dialog" class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-category-title"><i class="fa-solid fa-tags"></i> 目的（カテゴリ）を追加</h2>
+          <button type="button" class="modal-close-btn" data-close-modal="modal-category">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="category-id">
+
+          <div class="form-group">
+            <label for="category-name" class="required">目的・カテゴリ名</label>
+            <input type="text" id="category-name" class="form-input" placeholder="例：サウナ、ラーメン、道の駅..." required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="category-icon" class="required">アイコン（絵文字）</label>
+              <input type="text" id="category-icon" class="form-input" placeholder="♨️、🍜、🏔️ など" maxlength="4" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="category-color" class="required">テーマカラー</label>
+              <div class="color-picker-wrapper">
+                <input type="color" id="category-color" class="form-color" value="#3b82f6">
+                <span id="category-color-label" class="color-hex-label">#3b82f6</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="btn-delete-category" class="btn btn-danger" style="display: none; margin-right: auto;">
+            <i class="fa-solid fa-trash"></i> 削除
+          </button>
+          <button type="button" class="btn btn-ghost" data-close-modal="modal-category">キャンセル</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-check"></i> 保存する
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Data Management Modal -->
+    <dialog id="modal-data" class="app-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2><i class="fa-solid fa-sliders"></i> データ管理・バックアップ</h2>
+          <button type="button" class="modal-close-btn" data-close-modal="modal-data">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="data-section" id="section-pwa-guide">
+            <h3><i class="fa-solid fa-mobile-screen-button text-primary"></i> Android / スマホアプリとして使う</h3>
+            <p class="section-desc">本アプリはPWAに対応しています。Android（Chrome等）のメニューから「ホーム画面に追加」または「アプリをインストール」を行うと、URLバーのない完全な全画面アプリとして起動できます。</p>
+            <button type="button" id="btn-modal-install-pwa" class="btn btn-primary btn-sm" style="display: none;">
+              <i class="fa-solid fa-download"></i> ホーム画面にアプリを追加
+            </button>
+          </div>
+
+          <hr class="modal-divider">
+
+          <div class="data-section">
+            <h3><i class="fa-solid fa-cloud-arrow-down"></i> バックアップ (エクスポート)</h3>
+            <p class="section-desc">登録したすべての目的とスポットデータをJSONファイルとしてダウンロードします。</p>
+            <button id="btn-export-json" class="btn btn-outline">
+              <i class="fa-solid fa-download"></i> JSONファイルをダウンロード
+            </button>
+          </div>
+
+          <hr class="modal-divider">
+
+          <div class="data-section">
+            <h3><i class="fa-solid fa-cloud-arrow-up"></i> データ復元 (インポート)</h3>
+            <p class="section-desc">以前エクスポートしたJSONファイルからデータを読み込みます。</p>
+            <label class="btn btn-outline file-upload-label">
+              <i class="fa-solid fa-upload"></i> JSONファイルを選択して復元
+              <input type="file" id="file-import-json" accept=".json" style="display: none;">
+            </label>
+          </div>
+
+          <hr class="modal-divider">
+
+          <div class="data-section">
+            <h3><i class="fa-solid fa-wand-magic-sparkles"></i> サンプルデータの読み込み</h3>
+            <p class="section-desc">全国の有名温泉、宿、絶景レストランなどのサンプルデータを読み込んで試すことができます。</p>
+            <button id="btn-load-samples" class="btn btn-sm btn-ghost">
+              <i class="fa-solid fa-rotate-left"></i> サンプルデータを再読み込み
+            </button>
+          </div>
+
+          <hr class="modal-divider">
+
+          <div class="data-section">
+            <h3 class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> データの初期化</h3>
+            <p class="section-desc text-danger">保存されているすべてのスポットとカテゴリを削除し、初期状態に戻します。</p>
+            <button id="btn-reset-all-data" class="btn btn-sm btn-danger-outline">
+              <i class="fa-solid fa-trash-can"></i> 全データをクリア
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="modal-data">閉じる</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- App JS (ES Modules) -->
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

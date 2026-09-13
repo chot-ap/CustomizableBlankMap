@@ -1,0 +1,13 @@
+{
+  "name": "custom-blank-map",
+  "version": "1.0.0",
+  "description": "Customizable Blank Map with purpose categories, visited/wishlist places, and route calculation",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.4.2"
+  }
+}
