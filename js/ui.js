@@ -166,37 +166,51 @@ class UIManager {
       this.exportMapImage();
     });
 
-    // Global search input
-    const searchInput = document.getElementById('global-search-input');
-    const searchClear = document.getElementById('global-search-clear');
-    const searchDropdown = document.getElementById('search-results-dropdown');
+    // Setup Search Inputs (Header & Mobile Map Floating Bar)
+    const setupSearchField = (inputId, clearId, dropdownId) => {
+      const input = document.getElementById(inputId);
+      const clear = document.getElementById(clearId);
+      const dropdown = document.getElementById(dropdownId);
+      if (!input || !dropdown) return;
 
-    searchInput?.addEventListener('input', (e) => {
-      const val = e.target.value.trim();
-      if (val.length > 0) {
-        searchClear.style.display = 'block';
-        clearTimeout(this.searchTimeout);
-        this.searchTimeout = setTimeout(() => {
-          this.executeGlobalSearch(val);
-        }, 400);
-      } else {
-        searchClear.style.display = 'none';
-        searchDropdown.style.display = 'none';
-      }
-    });
+      let timeout = null;
+      input.addEventListener('input', (e) => {
+        const val = e.target.value.trim();
+        if (val.length > 0) {
+          if (clear) clear.style.display = 'block';
+          clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            this.executeSearchOnDropdown(val, dropdown);
+          }, 350);
+        } else {
+          if (clear) clear.style.display = 'none';
+          dropdown.style.display = 'none';
+        }
+      });
 
-    searchClear?.addEventListener('click', () => {
-      searchInput.value = '';
-      searchClear.style.display = 'none';
-      searchDropdown.style.display = 'none';
-    });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = input.value.trim();
+          if (val) this.executeSearchOnDropdown(val, dropdown);
+        }
+      });
 
-    // Close search dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
-        searchDropdown.style.display = 'none';
-      }
-    });
+      clear?.addEventListener('click', () => {
+        input.value = '';
+        clear.style.display = 'none';
+        dropdown.style.display = 'none';
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.style.display = 'none';
+        }
+      });
+    };
+
+    setupSearchField('global-search-input', 'global-search-clear', 'search-results-dropdown');
+    setupSearchField('map-search-input', 'map-search-clear', 'map-search-dropdown');
 
     // Map Interaction Banner Cancel
     document.getElementById('btn-cancel-interaction')?.addEventListener('click', () => {
@@ -834,9 +848,9 @@ class UIManager {
     }
   }
 
-  // Global Search
-  async executeGlobalSearch(query) {
-    const dropdown = document.getElementById('search-results-dropdown');
+  // Search on dropdown (Header or Mobile Floating Search)
+  async executeSearchOnDropdown(query, targetDropdown = null) {
+    const dropdown = targetDropdown || document.getElementById('search-results-dropdown');
     if (!dropdown) return;
 
     dropdown.innerHTML = '<div style="padding: 12px; text-align: center; color: #64748b;"><i class="fa-solid fa-spinner fa-spin"></i> 検索中...</div>';
@@ -993,12 +1007,14 @@ class UIManager {
     if (spot?.id) {
       titleEl.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> スポットを編集';
       delBtn.style.display = 'inline-flex';
-      // Hide search bar when simply editing an existing spot (can still change name)
-      if (searchSection) searchSection.style.display = 'none';
     } else {
       titleEl.innerHTML = '<i class="fa-solid fa-location-dot"></i> 新しいスポットを登録';
       delBtn.style.display = 'none';
-      if (searchSection) searchSection.style.display = 'flex';
+    }
+
+    // Always ensure the search section is visible
+    if (searchSection) {
+      searchSection.style.display = 'flex';
     }
 
     this.openModal('modal-spot');

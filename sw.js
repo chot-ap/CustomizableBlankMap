@@ -1,11 +1,9 @@
 /**
  * sw.js
- * Service Worker for BlankMap Studio PWA
- * Handles caching and offline capability
+ * Service Worker for BlankMap Studio PWA (v3 - Network First for App Shell)
  */
 
-const CACHE_NAME = 'blankmap-cache-v2';
-
+const CACHE_NAME = 'blankmap-cache-v3';
 
 const PRECACHE_ASSETS = [
   './',
@@ -24,7 +22,6 @@ const PRECACHE_ASSETS = [
   './icons/favicon.png'
 ];
 
-// Install: Cache local static shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -33,7 +30,6 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: Clean old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -48,17 +44,18 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Smart caching strategy
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // Handle map tiles (Cache with Network First)
+  // Handle map tiles (Cache First with network fallback)
   if (url.hostname.includes('gsi.go.jp') || url.hostname.includes('openstreetmap.org') || url.hostname.includes('cartocdn.com')) {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+
         try {
           const networkResponse = await fetch(event.request);
           if (networkResponse && networkResponse.status === 200) {
@@ -66,9 +63,6 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         } catch (err) {
-          // If offline, serve from cache if available
-          const cached = await cache.match(event.request);
-          if (cached) return cached;
           throw err;
         }
       })
@@ -76,24 +70,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle API requests (Photon / Nominatim / OSRM): Network only with graceful offline failure
+  // Live APIs: Bypass cache
   if (url.hostname.includes('router.project-osrm.org') || url.hostname.includes('nominatim.openstreetmap.org') || url.hostname.includes('photon.komoot.io')) {
-    return; // Let browser fetch normally, client-side fallback handles offline
+    return;
   }
 
-  // For app shell and local assets: Cache First, fallback to network
+  // App Shell & Local Assets: NETWORK FIRST so updates are immediately visible!
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch update in background (Stale-while-revalidate)
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {});
-        return cachedResponse;
+    fetch(event.request).then((networkResponse) => {
+      if (networkResponse && networkResponse.status === 200) {
+        const responseClone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseClone);
+        });
       }
-      return fetch(event.request);
+      return networkResponse;
+    }).catch(() => {
+      // If offline or network fails, serve from cache
+      return caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return caches.match('./index.html');
+      });
     })
   );
 });

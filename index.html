@@ -239,6 +239,16 @@
         </div>
       </aside>
 
+      <!-- Floating Top Search Bar (Accessible on Mobile & Desktop) -->
+      <div class="map-floating-search-bar" id="map-floating-search">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="map-search-input" placeholder="施設名・温泉・宿・住所を検索して追加..." autocomplete="off">
+        <button type="button" id="map-search-clear" class="clear-search-btn" title="クリア" style="display: none;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div id="map-search-dropdown" class="search-dropdown"></div>
+      </div>
+
       <!-- Map Container -->
       <main id="map" class="map-view"></main>
 
