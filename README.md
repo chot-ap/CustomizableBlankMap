@@ -1,6 +1,9 @@
 # 🗾 白地図手帳 - BlankMap Studio
 
-**白地図手帳 (BlankMap Studio)** は、旅や日常の「行った場所」や「行きたい場所」を白地図上に目的別（温泉、宿、グルメ、観光地など）に記録・保存し、出発点からの行き方や所要時間をスマートに検索・表示できるWebアプリケーションです。
+**白地図手帳 (BlankMap Studio)** は、旅や日常の「行った場所」や「行きたい場所」を白地図上に目的別（温泉、宿、グルメ、観光地など）に記録・保存し、出発点からの行き方や所要時間をスマートに検索・表示できるWeb＆Android対応アプリケーションです。
+
+- **GitHub リポジトリ**: [https://github.com/chot-ap/CustomizableBlankMap](https://github.com/chot-ap/CustomizableBlankMap)
+- **Web / PWA 公開URL (GitHub Pages)**: [https://chot-ap.github.io/CustomizableBlankMap/](https://chot-ap.github.io/CustomizableBlankMap/)
 
 ---
 
